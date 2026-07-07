@@ -158,9 +158,15 @@ export async function updateRow(
 
   await writeTableRow(table, row.rowIndex, merged);
 
+  const rowValues = tableRowValues(table, merged);
+  const updatedName = getNameFromRow(table, rowValues);
+  if (isProtectedRow(updatedName)) {
+    throw new Error(`Cannot rename row to protected label: ${updatedName}`);
+  }
+
   return {
     rowIndex: row.rowIndex,
-    name: row.name,
+    name: updatedName,
     data: merged,
   };
 }

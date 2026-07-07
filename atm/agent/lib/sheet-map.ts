@@ -93,14 +93,13 @@ export const PROTECTED_ROW_LABELS = [
   "total overheads",
   "total income left",
   "total assets",
-  "total",
   "salary",
   "bills",
   "savings",
   "disposable",
-];
+] as const;
 
 export function isProtectedRow(name: string): boolean {
   const lower = name.trim().toLowerCase();
-  return PROTECTED_ROW_LABELS.some((label) => lower.includes(label));
+  return PROTECTED_ROW_LABELS.some((label) => lower === label);
 }

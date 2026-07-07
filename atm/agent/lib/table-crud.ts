@@ -166,7 +166,7 @@ export async function removeRow(
 }
 
 export async function readDebtSchedule(): Promise<RowData[]> {
-  const values = await getRange(`${DEBT_SCHEDULE_TAB}!A:E`);
+  const values = await getRange(`'${DEBT_SCHEDULE_TAB}'!A1:E50`);
   if (values.length <= 1) return [];
   const headers = values[0]!.map((h) => String(h).toLowerCase().replace(/\s+/g, ""));
   return values.slice(1).map((row) => {

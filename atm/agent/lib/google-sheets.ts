@@ -116,36 +116,76 @@ function createMockBalanceSheet(): CellValue[][] {
   return rows;
 }
 
-function parseA1(a1: string): { tab: string; col: number; row: number } {
-  const [tabPart, cellPart] = a1.includes("!") ? a1.split("!") : [BALANCE_SHEET_TAB, a1];
-  const tab = tabPart.replace(/^'|'$/g, "");
-  const match = /^([A-Z]+)(\d+)$/.exec(cellPart);
-  if (!match) throw new Error(`Invalid A1 notation: ${a1}`);
-  const colLetters = match[1]!;
-  const row = Number.parseInt(match[2]!, 10) - 1;
+function columnLettersToIndex(letters: string): number {
   let col = 0;
-  for (const ch of colLetters) {
+  for (const ch of letters) {
     col = col * 26 + (ch.charCodeAt(0) - 64);
   }
-  return { tab, col: col - 1, row };
+  return col - 1;
+}
+
+function parseCellRef(ref: string): { col: number; row: number | null } {
+  const match = /^([A-Z]+)(\d+)?$/.exec(ref);
+  if (!match) throw new Error(`Invalid cell reference: ${ref}`);
+  return {
+    col: columnLettersToIndex(match[1]!),
+    row: match[2] ? Number.parseInt(match[2], 10) - 1 : null,
+  };
+}
+
+function parseRange(range: string): {
+  tab: string;
+  startCol: number;
+  startRow: number;
+  endCol: number;
+  endRow: number;
+} {
+  const bang = range.lastIndexOf("!");
+  const tab =
+    bang >= 0
+      ? range.slice(0, bang).replace(/^'|'$/g, "")
+      : BALANCE_SHEET_TAB;
+  const cellPart = bang >= 0 ? range.slice(bang + 1) : range;
+  const [startRef, endRef = startRef] = cellPart.split(":");
+
+  const start = parseCellRef(startRef!);
+  const end = parseCellRef(endRef!);
+
+  return {
+    tab,
+    startCol: start.col,
+    startRow: start.row ?? 0,
+    endCol: end.col,
+    endRow: end.row ?? 999,
+  };
+}
+
+function parseA1(a1: string): { tab: string; col: number; row: number } {
+  const parsed = parseRange(a1);
+  if (parsed.endRow === 999 && !a1.match(/\d/)) {
+    throw new Error(`Invalid A1 notation: ${a1}`);
+  }
+  return { tab: parsed.tab, col: parsed.startCol, row: parsed.startRow };
 }
 
 function mockGetRange(range: string): CellValue[][] {
-  const { tab, col, row } = parseA1(range.split(":")[0]!);
+  const { tab, startCol, startRow, endCol, endRow } = parseRange(range);
   const sheet = mockStore[tab] ?? [];
-  if (range.includes(":")) {
-    const end = parseA1(range.split(":")[1]!);
-    const result: CellValue[][] = [];
-    for (let r = row; r <= end.row; r++) {
-      const line: CellValue[] = [];
-      for (let c = col; c <= end.col; c++) {
-        line.push(sheet[r]?.[c] ?? "");
-      }
+  const result: CellValue[][] = [];
+  const lastRow = Math.min(endRow, sheet.length - 1);
+
+  for (let r = startRow; r <= lastRow; r++) {
+    const line: CellValue[] = [];
+    for (let c = startCol; c <= endCol; c++) {
+      line.push(sheet[r]?.[c] ?? "");
+    }
+    if (line.some((cell) => cell !== "")) {
+      result.push(line);
+    } else if (r === startRow) {
       result.push(line);
     }
-    return result;
   }
-  return [[sheet[row]?.[col] ?? ""]];
+  return result;
 }
 
 function mockSetCell(a1: string, value: CellValue): void {

@@ -10,7 +10,9 @@
     "build": "eve build",
     "dev": "eve dev",
     "start": "eve start",
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "eval": "eve eval",
+    "eval:strict": "eve eval --strict"
   },
   "dependencies": {
     "@vercel/connect": "0.2.2",

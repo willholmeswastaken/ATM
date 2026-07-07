@@ -94,9 +94,22 @@ Eve uses Vercel Functions with Fluid Compute and Workflows for durable sessions.
 
 ## Evals
 
+The agent has **14 Eve evals** covering queries, CRUD approval flows, and advice-with-data behavior. They run against mock sheet data and a deterministic fixture model (no AI Gateway key required).
+
 ```bash
-SHEETS_MOCK=true npm exec -- eve eval
+npm run eval          # run all evals
+npm run eval:strict   # fail on soft assertion misses too
 ```
+
+Eval layout:
+
+| Directory | Tests |
+|-----------|-------|
+| `evals/queries/` | Net worth, assets, liabilities, overheads, budget, debt schedule, tabs, greetings |
+| `evals/crud/` | Create asset, update liability, delete overhead — each verifies approval gate + completion |
+| `evals/advice/` | Savings advice, debt prioritization, financial health check |
+
+Shared prompts live in [`evals/helpers.ts`](evals/helpers.ts).
 
 ## Roadmap
 

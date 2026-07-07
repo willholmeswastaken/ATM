@@ -124,6 +124,17 @@ function columnLettersToIndex(letters: string): number {
   return col - 1;
 }
 
+export function columnIndexToLetter(index: number): string {
+  let n = index + 1;
+  let result = "";
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    result = String.fromCharCode(65 + rem) + result;
+    n = Math.floor((n - 1) / 26);
+  }
+  return result;
+}
+
 function parseCellRef(ref: string): { col: number; row: number | null } {
   const match = /^([A-Z]+)(\d+)?$/.exec(ref);
   if (!match) throw new Error(`Invalid cell reference: ${ref}`);
@@ -133,7 +144,7 @@ function parseCellRef(ref: string): { col: number; row: number | null } {
   };
 }
 
-function parseRange(range: string): {
+export function parseRange(range: string): {
   tab: string;
   startCol: number;
   startRow: number;
@@ -179,11 +190,7 @@ function mockGetRange(range: string): CellValue[][] {
     for (let c = startCol; c <= endCol; c++) {
       line.push(sheet[r]?.[c] ?? "");
     }
-    if (line.some((cell) => cell !== "")) {
-      result.push(line);
-    } else if (r === startRow) {
-      result.push(line);
-    }
+    result.push(line);
   }
   return result;
 }
@@ -239,7 +246,7 @@ export async function updateRange(
     const start = parseA1(range.split(":")[0]!);
     values.forEach((row, ri) => {
       row.forEach((cell, ci) => {
-        const colLetter = String.fromCharCode(65 + start.col + ci);
+        const colLetter = columnIndexToLetter(start.col + ci);
         mockSetCell(`${start.tab}!${colLetter}${start.row + ri + 1}`, cell);
       });
     });

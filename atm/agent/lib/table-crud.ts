@@ -1,14 +1,15 @@
 import { fuzzyMatchName } from "./finance.js";
 import {
-  deleteRow,
   DEBT_SCHEDULE_TAB,
   getRange,
-  insertRow,
+  parseRange,
+  columnIndexToLetter,
   readTable,
   updateRange,
 } from "./google-sheets.js";
 import {
   isProtectedRow,
+  quoteSheetTab,
   TABLES,
   type TableDef,
   type TableSection,
@@ -17,20 +18,10 @@ import {
 export type RowData = Record<string, string | number>;
 
 export interface TableRow {
+  /** 1-based sheet row number (matches A1 notation). */
   rowIndex: number;
   name: string;
   data: RowData;
-}
-
-function colIndexToLetter(index: number): string {
-  let n = index + 1;
-  let result = "";
-  while (n > 0) {
-    const rem = (n - 1) % 26;
-    result = String.fromCharCode(65 + rem) + result;
-    n = Math.floor((n - 1) / 26);
-  }
-  return result;
 }
 
 function rowToObject(table: TableDef, row: (string | number)[]): RowData {
@@ -44,6 +35,56 @@ function rowToObject(table: TableDef, row: (string | number)[]): RowData {
 function getNameFromRow(table: TableDef, row: (string | number)[]): string {
   const key = table.keyColumn;
   return String(row[key] ?? "").trim();
+}
+
+function tableRowValues(
+  table: TableDef,
+  data: RowData,
+): (string | number)[] {
+  const { startCol, endCol } = parseRange(table.range);
+  const width = endCol - startCol + 1;
+  const values: (string | number)[] = Array.from({ length: width }, () => "");
+  for (const [field, colIdx] of Object.entries(table.columns)) {
+    if (data[field] !== undefined) values[colIdx] = data[field] as string | number;
+  }
+  return values;
+}
+
+function buildTableRowRange(table: TableDef, sheetRow: number): string {
+  const { startCol, endCol } = parseRange(table.range);
+  const startColLetter = columnIndexToLetter(startCol);
+  const endColLetter = columnIndexToLetter(endCol);
+  return `${quoteSheetTab(table.tab)}!${startColLetter}${sheetRow}:${endColLetter}${sheetRow}`;
+}
+
+async function writeTableRow(
+  table: TableDef,
+  sheetRow: number,
+  data: RowData,
+): Promise<void> {
+  await updateRange(buildTableRowRange(table, sheetRow), [tableRowValues(table, data)]);
+}
+
+async function clearTableRow(table: TableDef, sheetRow: number): Promise<void> {
+  const { startCol, endCol } = parseRange(table.range);
+  const width = endCol - startCol + 1;
+  await updateRange(buildTableRowRange(table, sheetRow), [
+    Array.from({ length: width }, () => ""),
+  ]);
+}
+
+async function findNextEmptySheetRow(table: TableDef): Promise<number> {
+  const values = await readTable(table.section);
+  const rowCount = table.lastDataRow - table.firstDataRow + 1;
+
+  for (let offset = 0; offset < rowCount; offset++) {
+    const sheetRow = table.firstDataRow + offset;
+    const row = (values[offset] ?? []) as (string | number)[];
+    const name = getNameFromRow(table, row);
+    if (!name) return sheetRow;
+  }
+
+  throw new Error(`No empty rows available in ${table.section} table`);
 }
 
 export async function listRows(section: TableSection): Promise<TableRow[]> {
@@ -83,29 +124,19 @@ export async function createRow(
   data: RowData,
 ): Promise<TableRow> {
   const table = TABLES[section];
-  const rows = await listRows(section);
-  const insertAt = table.lastDataRow - table.firstDataRow - rows.length >= 0
-    ? table.firstDataRow + rows.length
-    : table.lastDataRow;
+  const sheetRow = await findNextEmptySheetRow(table);
+  const rowData = tableRowValues(table, data);
+  const name = getNameFromRow(table, rowData);
 
-  const values: (string | number)[] = [];
-  const maxCol = Math.max(...Object.values(table.columns));
-  for (let c = 0; c <= maxCol; c++) values.push("");
-
-  for (const [field, colIdx] of Object.entries(table.columns)) {
-    if (data[field] !== undefined) values[colIdx] = data[field] as string | number;
-  }
-
-  const name = getNameFromRow(table, values);
   if (!name) throw new Error("Row name is required");
   if (isProtectedRow(name)) throw new Error(`Cannot create protected row: ${name}`);
 
-  await insertRow(table.tab, insertAt, values);
+  await writeTableRow(table, sheetRow, data);
 
   return {
-    rowIndex: insertAt,
+    rowIndex: sheetRow,
     name,
-    data: rowToObject(table, values),
+    data: rowToObject(table, rowData),
   };
 }
 
@@ -125,23 +156,12 @@ export async function updateRow(
   const table = TABLES[section];
   const merged = { ...row.data, ...updates };
 
-  const values: (string | number)[] = [];
-  const maxCol = Math.max(...Object.values(table.columns));
-  for (let c = 0; c <= maxCol; c++) values.push("");
-
-  for (const [field, colIdx] of Object.entries(table.columns)) {
-    values[colIdx] = merged[field] ?? "";
-  }
-
-  const startCol = colIndexToLetter(0);
-  const endCol = colIndexToLetter(maxCol);
-  const range = `${table.tab}!${startCol}${row.rowIndex + 1}:${endCol}${row.rowIndex + 1}`;
-  await updateRange(range, [values]);
+  await writeTableRow(table, row.rowIndex, merged);
 
   return {
     rowIndex: row.rowIndex,
     name: row.name,
-    data: rowToObject(table, values),
+    data: merged,
   };
 }
 
@@ -161,7 +181,7 @@ export async function removeRow(
   }
 
   const table = TABLES[section];
-  await deleteRow(table.tab, row.rowIndex);
+  await clearTableRow(table, row.rowIndex);
   return { deleted: row.name };
 }
 
